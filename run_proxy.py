@@ -5,89 +5,91 @@
 import socket
 import sys
 import select
+from threading import Thread
 
 HOST = ''   # Symbolic name, meaning all available interfaces
 PORT = 8888 # Arbitrary non-privileged port
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 print('Socket created')
 
 #Bind socket to local host and port
 try:
-  s.bind((HOST, PORT))
+  server_socket.bind((HOST, PORT))
 except socket.error as msg:
-  print ('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+  print('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
   sys.exit()
 
-print ('Socket bind complete')
+print('Socket bind complete')
 
 #Start listening on socket
-s.listen(10)
+server_socket.listen(10)
 
+# list of socket to local server
+sock_2_local_server = []
+# list of socket from remote clients
+sock_from_client = []
+
+# communicating thread
+do_comunicate = True
+
+def communicate():
+  
+  while do_comunicate :
+    
+    sockets = []
+    # fill the pool of socket to read from
+    for s in sock_2_local_server :
+      sockets.append(s)
+
+    for s in sock_from_client :
+      sockets.append(s)
+
+    # let's read
+    try:
+      inputready,outputready,exceptready = select.select(sockets, [], [], 0.1)
+    except select.error:
+      break
+
+
+  '''if s_acc == conn:
+    data = conn.recv(4096)
+    print("Received from client " + str(len(data)) + " bytes")
+    if not data:
+      print('client closed the connection')
+      is_conn = 0
+      break
+    else :
+      sock.sendall(data)
+      print('send data to server')
+
+  elif aa == sock:
+    data = sock.recv(4096)
+    print("Received from server " + str(len(data)) + "bytes")
+    if not data:
+      print('server closed the connection')
+      is_conn = 0
+      break
+    else :
+      conn.sendall(data)
+      print('send data to client')
+'''
+
+# run communicating thread
+t1 = threading.Thread(target=communicate, args=[])
+t1.start()
 
 #now keep talking with the client
-while 1:
+while True:
+  
   print ('Socket now listening')
-  #wait to accept a connection - blocking call
-  conn, addr = s.accept()
+  sock, addr = server_socket.accept()
   print ('Connected with ' + addr[0] + ':' + str(addr[1]))
-  print('socket from client')
-  print(conn.fileno())
-  
-  sock = socket.create_connection(('localhost', 3000))
-  print('socket to server')
-  print(sock.fileno())
-  
-  #infinite loop so that function do not terminate and thread do not end.
-  while True:
-
-    reading = 1
-    while reading == 1:
-      try:
-        inputready,outputready,exceptready = select.select([conn, sock], [], [], 0.1)
-      except select.error:
-        break
-
-      is_conn = 1
-
-      for aa in inputready:
-        if aa == conn:
-          
-          data = conn.recv(4096)
-          print("Received from client " + str(len(data)) + "bytes")
-          if not data:
-            print('client closed the connection')
-            is_conn = 0
-            break
-          else :
-            sock.sendall(data)
-            #conn.sendall('500 problem HTTP/1.0\r\n\r\n'.encode('ascii'))
-            print('send data to server')
-
-        elif aa == sock:
-          
-          data = sock.recv(4096)
-          print("Received from server " + str(len(data)) + "bytes")
-          if not data:
-            print('server closed the connection')
-            is_conn = 0
-            break
-          else :
-            conn.sendall(data)
-            print('send data to client')
-
-      # end for
-      if is_conn == 0:
-        conn.close()
-        sock.close()
-        reading = 0
-        break
+  print('socket from client: ' + str(sock.fileno())))
+  sock_from_client.append(sock)
+  sock_2_local_server.append(socket.create_connection(('localhost', 3000)))
       
-    # end While
-    print('Waiting for next client')
-    break # toto je blbost a treba to uplne odstranit!!!!
-  #came out of loop
-  conn.close()
-  sock.close()
-
-s.close()
+  print('Waiting for next client...')
+  
+# finito, the server is going down
+server_socket.close()
