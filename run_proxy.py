@@ -7,11 +7,35 @@ import sys
 import select
 from threading import Thread
 #---------------------------------------------------------------------------------------------
+# Important --> this variable controlls the thread
+do_comunicate = True
+#---------------------------------------------------------------------------------------------
+# list of sockets
+comm_sockets = {}
+#---------------------------------------------------------------------------------------------
+def stop_comm_thread():
+  global do_comunicate
+  print('going to stop the thread')
+  do_comunicate = False
+  
+  for k, s in comm_sockets.items() :
+    print(s)
+    s.shutdown()
+    s.close()
+
+  # finito, the server is going down
+  global server_socket
+  server_socket.close()
+
+#---------------------------------------------------------------------------------------------
 # handle CTRL + C
 import signal
 import sys
+
 def signal_handler(signal, frame):
   print('You pressed Ctrl+C!')
+  stop_comm_thread()
+  
 signal.signal(signal.SIGINT, signal_handler)
 #---------------------------------------------------------------------------------------------
 HOST = ''   # Symbolic name, meaning all available interfaces
@@ -24,7 +48,7 @@ print('Socket created')
 try:
   server_socket.bind((HOST, PORT))
 except socket.error as msg:
-  print('Bind failed. Error Code : ' + str(msg[0]) + ' Message ' + msg[1])
+  print('Bind failed. Error Code : ' + str(msg.errno) + ' Message ' + msg.strerror)
   sys.exit()
 
 print('Socket bind complete')
@@ -32,86 +56,74 @@ print('Socket bind complete')
 #Start listening on socket
 server_socket.listen(10)
 
-# list of socket to local server
-sock_2_local_server = []
-# list of socket from remote clients
-sock_from_client = []
 #---------------------------------------------------------------------------------------------
 # communicating thread
-do_comunicate = True
-
 def communicate():
-  
+  global comm_sockets
+  print('Thread started')  
   while do_comunicate :
     
     sockets = []
     # fill the pool of socket to read from
-    for s in sock_2_local_server :
-      sockets.append(s)
-
-    for s in sock_from_client :
-      sockets.append(s)
-
+    try:
+      for k, ss in comm_sockets.items() :
+        sockets.append(ss)
+    except Exception as e:
+      print(e)
+      break
+    
     # let's read
     try:
       inputready,outputready,exceptready = select.select(sockets, [], [], 0.1)
-    except select.error:
+    except select.error as e:
+      print('Thread got an error...' + e.strerror)
+      print(e)
       break
 
     for s in inputready:
       data = s.recv(4096)
+      print("Received " + str(len(data)) + " bytes")
       if not data:
-        print('Connection is closed')
+        print('someone closed the connection')
+        ss = comm_sockets[str(s.fileno())]
+        del comm_sockets[str(ss.fileno())]
+        del comm_sockets[str(s.fileno())]
+        s.close()
+        ss.close()
+      else :
+        comm_sockets[str(s.fileno())].sendall(data)
         
-
-  '''if s_acc == conn:
-    data = conn.recv(4096)
-    print("Received from client " + str(len(data)) + " bytes")
-    if not data:
-      print('client closed the connection')
-      is_conn = 0
-      break
-    else :
-      sock.sendall(data)
-      print('send data to server')
-
-  elif aa == sock:
-    data = sock.recv(4096)
-    print("Received from server " + str(len(data)) + "bytes")
-    if not data:
-      print('server closed the connection')
-      is_conn = 0
-      break
-    else :
-      conn.sendall(data)
-      print('send data to client')
-'''
+  print('Thread has finished')
 #---------------------------------------------------------------------------------------------
 # run communicating thread
 t1 = Thread(target=communicate, args=[])
 t1.start()
 
 #now keep talking with the client
-while True:
+while do_comunicate:
 
   try:
   
-    print ('Socket now listening')
+    print('Socket now listening')
     sock, addr = server_socket.accept()
-    print ('Connected with ' + addr[0] + ':' + str(addr[1]))
+    print('Connected with ' + addr[0] + ':' + str(addr[1]))
     print('socket from client: ' + str(sock.fileno()))
-    sock_from_client.append(sock)
-    sock_2_local_server.append(socket.create_connection(('localhost', 3000)))
+    try:
+      s = socket.create_connection(('localhost', 3000))
+      comm_sockets[str(s.fileno())] = sock
+      comm_sockets[str(sock.fileno())] = s
+    except socket.error as serr:
+      print(serr.strerror)
+      sock.close()
+
+    # debug
+    #print(comm_sockets)
     print('Waiting for next client...')
 
+  except Exception as e:
+    print('Exception occured...')
+    print(e)
   except KeyboardInterrupt:
-    do_comunicate = False
-    t1.join()
-    for s in sock_2_local_server :
-      s.close()
-
-    for s in sock_from_client :
-      s.close()
+    print('KeyboardInterrupt')
+    
 #---------------------------------------------------------------------------------------------
-# finito, the server is going down
-server_socket.close()
