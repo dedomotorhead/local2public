@@ -76,7 +76,7 @@ def communicate():
 '''
 
 # run communicating thread
-t1 = threading.Thread(target=communicate, args=[])
+t1 = Thread(target=communicate, args=[])
 t1.start()
 
 #now keep talking with the client
@@ -85,7 +85,7 @@ while True:
   print ('Socket now listening')
   sock, addr = server_socket.accept()
   print ('Connected with ' + addr[0] + ':' + str(addr[1]))
-  print('socket from client: ' + str(sock.fileno())))
+  print('socket from client: ' + str(sock.fileno()))
   sock_from_client.append(sock)
   sock_2_local_server.append(socket.create_connection(('localhost', 3000)))
       
